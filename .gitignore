@@ -33,3 +33,4 @@ Thumbs.db
 *.log
 datos.json
 setup.py
+Guardado/*

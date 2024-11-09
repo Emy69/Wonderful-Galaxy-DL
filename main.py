@@ -72,7 +72,21 @@ class DescargadorTextoApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Descargador de Texto")
-        self.root.geometry("800x600")
+
+        # Obtener el tamaño de la pantalla
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+
+        # Establecer el tamaño de la ventana
+        window_width = 800
+        window_height = 700
+
+        # Calcular las coordenadas para centrar la ventana
+        position_top = int(screen_height / 2 - window_height / 2)
+        position_right = int(screen_width / 2 - window_width / 2)
+
+        # Establecer la geometría de la ventana
+        self.root.geometry(f'{window_width}x{window_height}+{position_right}+{position_top}')
 
         # Menú personalizado en la parte superior
         self.menu_bar = ctk.CTkFrame(root)
@@ -267,7 +281,7 @@ class DescargadorTextoApp:
             "url": url,
             "password": password
         }
-        with open("datos.json", "w", encoding="utf-8") as json_file:
+        with open("Guardado/datos.json", "w", encoding="utf-8") as json_file:
             json.dump(datos, json_file)
 
     def descargar_texto(self):
@@ -384,8 +398,8 @@ class DescargadorTextoApp:
 
     def cargar_datos(self):
         """Cargar datos guardados desde el archivo JSON."""
-        if os.path.exists("datos.json"):
-            with open("datos.json", "r") as json_file:
+        if os.path.exists("Guardado/datos.json"):
+            with open("Guardado/datos.json", "r") as json_file:
                 datos = json.load(json_file)
                 self.entry_url.insert(0, datos.get("url", ""))
                 self.entry_password.insert(0, datos.get("password", ""))
