@@ -79,7 +79,7 @@ class DescargadorTextoApp:
         self.menu_bar.pack(side='top', fill='x')
 
         # Llamar al verificador de actualizaciones
-        self.actualizador = ActualizadorApp(app_version="1.0.0")  # Tu versión actual
+        self.actualizador = ActualizadorApp(app_version="0.0.1")  # Tu versión actual
         self.verificar_actualizacion()
 
         self.create_custom_menubar()
