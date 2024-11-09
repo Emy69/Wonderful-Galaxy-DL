@@ -12,6 +12,10 @@ import os
 import requests
 import json
 from PIL import Image
+import webbrowser
+import tkinter as tk
+from tkinter import messagebox
+from PIL import Image as PilImage, ImageTk
 
 class DescargadorTextoApp:
     def __init__(self, root):
@@ -19,66 +23,166 @@ class DescargadorTextoApp:
         self.root.title("Descargador de Texto")
         self.root.geometry("800x600")
 
+        # Menú personalizado en la parte superior
+        self.menu_bar = ctk.CTkFrame(root)
+        self.menu_bar.pack(side='top', fill='x')
+
+        self.create_custom_menubar()
+
+        # Crear un frame para contener todos los elementos
+        self.frame = ctk.CTkFrame(root)
+        self.frame.pack(pady=20, padx=20, fill='both', expand=True)
+
         ctk.set_appearance_mode("System")
         ctk.set_default_color_theme("blue")
 
         # Campo de entrada para la URL
-        self.label_url = ctk.CTkLabel(root, text="Ingresa la URL a escanear:")
+        self.label_url = ctk.CTkLabel(self.frame, text="Ingresa la URL a escanear:")
         self.label_url.pack(pady=20)
-        self.entry_url = ctk.CTkEntry(root, width=200)
+        self.entry_url = ctk.CTkEntry(self.frame, width=200)
         self.entry_url.pack(pady=10)
 
         # Campo de entrada para la contraseña
-        self.label_password = ctk.CTkLabel(root, text="Ingresa la contraseña:")
+        self.label_password = ctk.CTkLabel(self.frame, text="Ingresa la contraseña:")
         self.label_password.pack(pady=20)
-        self.entry_password = ctk.CTkEntry(root, width=200, show='*')
+        self.entry_password = ctk.CTkEntry(self.frame, width=200, show='*')
         self.entry_password.pack(pady=10)
 
         # Cargar datos guardados si existen
         self.cargar_datos()
 
         # Botón para escanear
-        self.boton_scanear = ctk.CTkButton(root, text="Acceder y Escanear", command=self.descargar_texto)
+        self.boton_scanear = ctk.CTkButton(self.frame, text="Acceder y Escanear", command=self.descargar_texto)
         self.boton_scanear.pack(pady=20)
 
         # Área de texto para mostrar el resultado
-        self.text_area = ctk.CTkTextbox(root, width=500, height=200, state='normal')
+        self.text_area = ctk.CTkTextbox(self.frame, width=500, height=200, state='normal')
         self.text_area.pack(pady=20)
         self.text_area.configure(state='disabled')  # Iniciar deshabilitada
 
         # Barra de progreso
-        self.progress_bar = ctk.CTkProgressBar(root)
+        self.progress_bar = ctk.CTkProgressBar(self.frame)
         self.progress_bar.pack(pady=20)
 
         # Etiqueta para mostrar la ruta del PDF
-        self.label_pdf_path = ctk.CTkLabel(root, text="")
+        self.label_pdf_path = ctk.CTkLabel(self.frame, text="")
         self.label_pdf_path.pack(pady=10)
 
         # Inicializar el log
         self.log_mensajes = []  # Lista para almacenar los mensajes del log
 
-    def crear_pdf(self, contenido_texto, imagenes, ruta):
-        pdf = FPDF()
-        pdf.add_page()
+    def load_image(self, image_path):
+        """Carga una imagen y la devuelve como un objeto PhotoImage."""
+        return ctk.CTkImage(Image.open(image_path), size=(24, 24))  # Ajusta el tamaño según sea necesario
 
-        # Establecer fuente a DejaVuSans (soporta Unicode)
-        pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
-        pdf.set_font('DejaVu', '', 12)  # Usar la fuente DejaVuSans
+    def create_custom_menubar(self):
+        # Botón Archivo
+        archivo_button = ctk.CTkButton(
+            self.menu_bar,
+            text="Archivo",
+            width=80,
+            fg_color="transparent",
+            hover_color="gray25",
+            command=self.toggle_archivo_menu
+        )
+        archivo_button.pack(side="left")
+        archivo_button.bind("<Button-1>", lambda e: "break")
 
-        # Añadir contenido de texto
-        for texto in contenido_texto:
-            pdf.multi_cell(0, 10, texto)
+        # Botón About
+        about_button = ctk.CTkButton(
+            self.menu_bar,
+            text="About",
+            width=80,
+            fg_color="transparent",
+            hover_color="gray25",
+            command=self.show_contributors_window
+        )
+        about_button.pack(side="left")
+        about_button.bind("<Button-1>", lambda e: "break")
 
-        # Añadir imágenes
-        for imagen in imagenes:
-            pdf.add_page()
-            pdf.image(imagen, x=10, y=10, w=100)  # Ajustar según sea necesario
+        # Botón Donaciones
+        donaciones_button = ctk.CTkButton(
+            self.menu_bar,
+            text="Donaciones",
+            width=80,
+            fg_color="transparent",
+            hover_color="gray25",
+            command=self.toggle_donaciones_menu
+        )
+        donaciones_button.pack(side="left")
+        donaciones_button.bind("<Button-1>", lambda e: "break")
 
-        pdf.output(ruta)
+        # Inicializar variables para los menús desplegables
+        self.archivo_menu_frame = None
+        self.ayuda_menu_frame = None
+        self.donaciones_menu_frame = None
 
-    def seleccionar_ruta(self):
-        ruta = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
-        return ruta
+    def toggle_archivo_menu(self):
+        if self.archivo_menu_frame and self.archivo_menu_frame.winfo_exists():
+            self.archivo_menu_frame.destroy()
+        else:
+            self.close_all_menus()
+            self.archivo_menu_frame = self.create_menu_frame([
+                ("Configuraciones", self.open_settings),  # Cambia a tu método para abrir configuraciones
+                ("separator", None),
+                ("Salir", self.salir_aplicacion),  # Cambia a un método que cierre la aplicación
+            ], x=0)
+
+    def toggle_ayuda_menu(self):
+        if self.ayuda_menu_frame and self.ayuda_menu_frame.winfo_exists():
+            self.ayuda_menu_frame.destroy()
+        else:
+            self.close_all_menus()
+            self.ayuda_menu_frame = self.create_menu_frame([
+                ("Notas de Parche", self.open_patch_notes),
+                ("separator", None),
+                ("Reportar un Error", None),
+                ("   GitHub", lambda: webbrowser.open("https://github.com/Emy69/CoomerDL/issues")),
+                ("   Discord", lambda: webbrowser.open("https://discord.gg/ku8gSPsesh")),
+            ], x=80)
+
+    def toggle_donaciones_menu(self):
+        if self.donaciones_menu_frame and self.donaciones_menu_frame.winfo_exists():
+            self.donaciones_menu_frame.destroy()
+        else:
+            self.close_all_menus()
+            self.donaciones_menu_frame = self.create_menu_frame([
+                ("PayPal", lambda: webbrowser.open("https://www.paypal.com/paypalme/Emy699")),
+                ("Buy me a coffee", lambda: webbrowser.open("https://buymeacoffee.com/emy_69")),
+            ], x=160)
+
+    def create_menu_frame(self, options, x):
+        # Crear el marco del menú con fondo oscuro y borde de sombra para resaltar
+        menu_frame = ctk.CTkFrame(self.root, corner_radius=5, fg_color="gray25", border_color="black", border_width=1)
+        menu_frame.place(x=x, y=30)
+        
+        # Añadir opciones al menú con separación entre elementos
+        for option in options:
+            if option[0] == "separator":
+                separator = ctk.CTkFrame(menu_frame, height=1, fg_color="gray50")
+                separator.pack(fill="x", padx=5, pady=5)
+            elif option[1] is None:
+                # Texto sin comando (por ejemplo, título de submenú)
+                label = ctk.CTkLabel(menu_frame, text=option[0], anchor="w", fg_color="gray30")
+                label.pack(fill="x", padx=5, pady=2)
+            else:
+                btn = ctk.CTkButton(
+                    menu_frame,
+                    text=option[0],
+                    fg_color="transparent",
+                    hover_color="gray35",
+                    anchor="w",
+                    text_color="white",
+                    command=lambda cmd=option[1]: cmd()
+                )
+                btn.pack(fill="x", padx=5, pady=2)
+
+        return menu_frame
+
+    def close_all_menus(self):
+        for menu_frame in [self.archivo_menu_frame, self.ayuda_menu_frame, self.donaciones_menu_frame]:
+            if menu_frame and menu_frame.winfo_exists():
+                menu_frame.destroy()
 
     def mostrar_mensaje(self, mensaje):
         """Función para actualizar el panel de texto en la interfaz."""
@@ -120,7 +224,7 @@ class DescargadorTextoApp:
                 # Configuración de Selenium y ChromeDriver
                 options = webdriver.ChromeOptions()
                 options.add_argument("--disable-javascript")  # Desactiva JavaScript
-                # options.add_argument('--headless')  # Comentar esta línea
+                options.add_argument('--headless')  # Comentar esta línea
                 driver = webdriver.Chrome(options=options)
 
                 driver.get(url)
@@ -216,6 +320,141 @@ class DescargadorTextoApp:
                 self.entry_url.insert(0, datos.get("url", ""))
                 self.entry_password.insert(0, datos.get("password", ""))
 
+    def open_settings(self):
+        """Método para abrir la ventana de configuraciones."""
+        settings_window = tk.Toplevel(self.root)
+        settings_window.title("Configuraciones")
+        
+        # Aquí se establece el tamaño de la ventana
+        width = 400
+        height = 300
+        settings_window.geometry(f"{width}x{height}")
+
+        # Centrar la ventana
+        self.center_window(settings_window)
+
+        # Aquí puedes implementar la lógica para abrir la ventana de configuraciones
+        self.mostrar_mensaje("Abrir ventana de configuraciones...")  # Mensaje de ejemplo
+
+    def salir_aplicacion(self):
+        """Método para salir de la aplicación."""
+        self.root.quit()  # O usa self.root.destroy() si deseas cerrar la ventana
+
+    def mostrar_info_about(self):
+        """Obtiene información de GitHub y muestra en una ventana emergente."""
+        try:
+            response = requests.get("https://api.github.com/users/emy69")  # Reemplaza 'tu_usuario' con tu nombre de usuario de GitHub
+            data = response.json()
+
+            # Extraer información relevante
+            nombre = data.get("name", "Nombre no disponible")
+            bio = data.get("bio", "Bio no disponible")
+            repos_url = data.get("repos_url", "")
+            repos_count = data.get("public_repos", 0)
+
+            # Crear el mensaje para mostrar
+            mensaje = f"Nombre: {nombre}\nBio: {bio}\nRepositorios Públicos: {repos_count}\nMás información: {repos_url}"
+
+            # Mostrar la ventana emergente
+            messagebox.showinfo("Acerca de", mensaje)
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudo obtener la información: {str(e)}")
+
+    def show_contributors_window(self):
+        """Muestra una ventana con la información personal del usuario."""
+        contributors_window = tk.Toplevel(self.root)
+        contributors_window.title("Acerca de mí")
+        
+        # Aquí se establece el tamaño de la ventana
+        width = 400
+        height = 400
+        contributors_window.geometry(f"{width}x{height}")
+
+        # Centrar la ventana
+        self.center_window(contributors_window)
+
+        self.show_personal_info(contributors_window)
+
+    def show_personal_info(self, parent_frame):
+        """Muestra la información personal del usuario en la ventana."""
+        try:
+            # Aquí puedes personalizar tu información
+            nombre = "Emy"  # Reemplaza con tu nombre
+            bio = "Holis."  # Reemplaza con tu biografía
+            avatar_url = "https://avatars.githubusercontent.com/u/142945265?v=4"  # Reemplaza con la URL de tu avatar
+            perfil_url = "https://github.com/emy69"  # Reemplaza con tu URL de GitHub
+
+            # Crear un marco para la información
+            frame = ctk.CTkFrame(parent_frame)
+            frame.pack(pady=20)
+
+            # Cargar y mostrar el avatar
+            avatar_image = PilImage.open(requests.get(avatar_url, stream=True).raw)
+            avatar_image = avatar_image.resize((100, 100), PilImage.Resampling.LANCZOS)
+            avatar_photo = ImageTk.PhotoImage(avatar_image)
+
+            avatar_label = tk.Label(frame, image=avatar_photo)
+            avatar_label.image = avatar_photo  # Guardar referencia para evitar recolección de basura
+            avatar_label.pack(side="top", pady=10)
+
+            # Mostrar el nombre
+            name_label = ctk.CTkLabel(frame, text=nombre, font=("Helvetica", 16))
+            name_label.pack(side="top", pady=5)
+
+            # Mostrar la biografía
+            bio_label = ctk.CTkLabel(frame, text=bio, font=("Helvetica", 12))
+            bio_label.pack(side="top", pady=5)
+
+            # Botón para abrir el perfil de GitHub
+            link_button = ctk.CTkButton(
+                frame,
+                text="Ver Perfil en GitHub",
+                command=lambda: webbrowser.open(perfil_url)
+            )
+            link_button.pack(side="top", pady=10)
+
+        except Exception as e:
+            messagebox.showerror(
+                "Error",
+                f"Error al cargar la información personal.\nError: {e}"
+            )
+
+    def center_window(self, window):
+        """Centrar la ventana en la pantalla."""
+        window.update_idletasks()  # Actualiza las tareas pendientes para obtener el tamaño correcto
+        width = window.winfo_width()
+        height = window.winfo_height()
+        x = (self.root.winfo_width() // 2) - (width // 2) + self.root.winfo_x()
+        y = (self.root.winfo_height() // 2) - (height // 2) + self.root.winfo_y()
+        window.geometry(f"{width}x{height}+{x}+{y}")
+
+    def seleccionar_ruta(self):
+        """Abre un cuadro de diálogo para seleccionar la ruta donde se guardará el PDF."""
+        ruta = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
+            title="Guardar PDF como"
+        )
+        return ruta
+    
+    def crear_pdf(self, contenido_texto, imagenes, ruta):
+        pdf = FPDF()
+        pdf.add_page()
+
+        # Establecer fuente a DejaVuSans (soporta Unicode)
+        pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
+        pdf.set_font('DejaVu', '', 12)  # Usar la fuente DejaVuSans
+
+        # Añadir contenido de texto
+        for texto in contenido_texto:
+            pdf.multi_cell(0, 10, texto)
+
+        # Añadir imágenes
+        for imagen in imagenes:
+            pdf.add_page()
+            pdf.image(imagen, x=10, y=10, w=100)  # Ajustar según sea necesario
+
+        pdf.output(ruta)
 
 if __name__ == "__main__":
     ventana = ctk.CTk()
