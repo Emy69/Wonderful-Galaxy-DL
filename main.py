@@ -1,4 +1,7 @@
 import io
+import subprocess
+import sys
+import zipfile
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -17,6 +20,54 @@ import tkinter as tk
 from tkinter import messagebox
 from PIL import Image as PilImage, ImageTk
 
+class ActualizadorApp:
+    def __init__(self, app_version):
+        self.app_version = app_version
+        self.repo_url = "https://api.github.com/repos/Emy69/Scans/releases/latest"  # Reemplaza con la URL de tu repositorio
+        self.download_url = None
+
+    def verificar_actualizacion(self):
+        """Verifica si existe una actualización disponible en GitHub."""
+        try:
+            response = requests.get(self.repo_url)
+            data = response.json()
+
+            latest_version = data["tag_name"]  # Última versión disponible
+            if latest_version > self.app_version:
+                self.download_url = data["assets"][0]["browser_download_url"]
+                return True
+            return False
+        except Exception as e:
+            print(f"Error al verificar actualización: {e}")
+            return False
+
+    def descargar_y_actualizar(self):
+        """Descarga la actualización, la descomprime y reinicia la aplicación."""
+        try:
+            if not self.download_url:
+                raise ValueError("No hay URL de descarga disponible.")
+
+            response = requests.get(self.download_url)
+            if response.status_code == 200:
+                zip_file = zipfile.ZipFile(io.BytesIO(response.content))
+                zip_file.extractall("update_folder")  # Extrae los archivos en una carpeta temporal
+                print("Actualización descargada y descomprimida.")
+                
+                # Aquí debes reemplazar con la lógica para actualizar tu app
+                # (esto dependerá de cómo se haya organizado el código y cómo se construye el archivo ejecutable)
+                self.reiniciar_aplicacion()
+            else:
+                print(f"Error al descargar la actualización: {response.status_code}")
+        except Exception as e:
+            print(f"Error al descargar o descomprimir la actualización: {e}")
+
+    def reiniciar_aplicacion(self):
+        """Reinicia la aplicación después de actualizar."""
+        print("Reiniciando la aplicación...")
+        subprocess.Popen([sys.executable] + sys.argv)  # Reinicia la aplicación
+        os._exit(0)  # Cierra la aplicación actual
+
+
 class DescargadorTextoApp:
     def __init__(self, root):
         self.root = root
@@ -26,6 +77,10 @@ class DescargadorTextoApp:
         # Menú personalizado en la parte superior
         self.menu_bar = ctk.CTkFrame(root)
         self.menu_bar.pack(side='top', fill='x')
+
+        # Llamar al verificador de actualizaciones
+        self.actualizador = ActualizadorApp(app_version="1.0.0")  # Tu versión actual
+        self.verificar_actualizacion()
 
         self.create_custom_menubar()
 
@@ -70,6 +125,21 @@ class DescargadorTextoApp:
 
         # Inicializar el log
         self.log_mensajes = []  # Lista para almacenar los mensajes del log
+
+    def verificar_actualizacion(self):
+        """Verifica si hay una actualización disponible y la descarga si es necesario."""
+        def tarea():
+            if self.actualizador.verificar_actualizacion():
+                respuesta = messagebox.askyesno("Actualización disponible", "¿Hay una nueva actualización disponible. ¿Quieres actualizar ahora?")
+                if respuesta:
+                    self.actualizador.descargar_y_actualizar()
+            else:
+                print("Ya tienes la última versión.")
+
+        # Ejecutar la tarea en un hilo para no bloquear la interfaz
+        hilo = threading.Thread(target=tarea)
+        hilo.start()
+
 
     def load_image(self, image_path):
         """Carga una imagen y la devuelve como un objeto PhotoImage."""
