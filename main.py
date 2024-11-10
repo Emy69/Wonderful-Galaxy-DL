@@ -455,6 +455,10 @@ class DescargadorTextoApp:
         self.text_area.configure(state='disabled')
 
     def guardar_datos(self, url, password):
+        # Verificar si la carpeta 'Guardado' existe, si no, crearla
+        if not os.path.exists("Guardado"):
+            os.makedirs("Guardado")
+
         datos = {
             "url": url,
             "password": password
