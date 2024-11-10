@@ -34,3 +34,6 @@ Thumbs.db
 datos.json
 setup.py
 Guardado/*
+app_backup/*
+update.zip
+config.json

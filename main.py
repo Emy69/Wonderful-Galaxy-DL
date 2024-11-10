@@ -9,6 +9,7 @@ import threading
 import webbrowser
 import subprocess
 import tkinter as tk
+from tkinter import ttk  # Importar ttk para usar Progressbar
 import customtkinter as ctk
 
 from fpdf import FPDF
@@ -69,6 +70,10 @@ class ActualizadorApp:
             latest_version = data["tag_name"]  # Última versión disponible
             if latest_version > self.app_version:
                 self.download_url = data["assets"][0]["browser_download_url"]
+                # Preguntar al usuario si desea actualizar
+                respuesta = messagebox.askyesno("Actualización disponible", "Hay una nueva actualización disponible. ¿Quieres actualizar ahora?")
+                if respuesta:
+                    self.mostrar_ventana_actualizacion()
                 return True
             return False
         except Exception as e:
@@ -76,61 +81,92 @@ class ActualizadorApp:
             return False
 
     def mostrar_ventana_actualizacion(self):
-        """Muestra una ventana de actualización con barras de progreso."""
-        root = tk.Tk()
+        """Muestra una ventana de actualización con una barra de progreso y un área de log."""
+        root = ctk.CTkToplevel()  # Usar Toplevel para crear una ventana secundaria
         root.title("Actualización de la aplicación")
         
-        # Barra de progreso para la descarga
-        descarga_label = tk.Label(root, text="Descargando actualización...")
-        descarga_label.pack(pady=10)
-        descarga_progress = tk.DoubleVar()
-        descarga_barra = tk.Progressbar(root, variable=descarga_progress, maximum=100)
-        descarga_barra.pack(pady=10, fill='x')
+        # Centrar la ventana
+        window_width = 400
+        window_height = 300
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        position_top = int(screen_height / 2 - window_height / 2)
+        position_right = int(screen_width / 2 - window_width / 2)
+        root.geometry(f'{window_width}x{window_height}+{position_right}+{position_top}')
+        
+        # Mantener la ventana en primer plano
+        root.attributes('-topmost', True)
 
-        # Barra de progreso para la descompresión
-        descompresion_label = tk.Label(root, text="Descomprimiendo archivos...")
-        descompresion_label.pack(pady=10)
-        descompresion_progress = tk.DoubleVar()
-        descompresion_barra = tk.Progressbar(root, variable=descompresion_progress, maximum=100)
-        descompresion_barra.pack(pady=10, fill='x')
+        # Frame principal
+        main_frame = ctk.CTkFrame(root)
+        main_frame.pack(pady=10, padx=10, fill='both', expand=True)
 
-        # Barra de progreso para el reemplazo de archivos
-        reemplazo_label = tk.Label(root, text="Reemplazando archivos...")
-        reemplazo_label.pack(pady=10)
-        reemplazo_progress = tk.DoubleVar()
-        reemplazo_barra = tk.Progressbar(root, variable=reemplazo_progress, maximum=100)
-        reemplazo_barra.pack(pady=10, fill='x')
+        # Barra de progreso
+        progreso_label = ctk.CTkLabel(main_frame, text="Progreso de la actualización...")
+        progreso_label.pack(pady=10)
+        progreso = tk.DoubleVar()
+        barra_progreso = ttk.Progressbar(main_frame, variable=progreso, maximum=100)
+        barra_progreso.pack(pady=10, fill='x')
+
+        # Área de log usando tk.Text
+        log_text = tk.Text(main_frame, height=10, wrap='word', state='disabled')
+        log_text.pack(pady=10, fill='both', expand=True)
+
+        def log_mensaje(mensaje, error=False):
+            def update_log():
+                log_text.configure(state='normal')
+                if error:
+                    log_text.insert(tk.END, f"ERROR: {mensaje}\n", 'error')
+                else:
+                    log_text.insert(tk.END, f"{mensaje}\n")
+                log_text.configure(state='disabled')
+                log_text.see(tk.END)
+
+            root.after(0, update_log)
+
+        log_text.tag_configure('error', foreground='red')
 
         # Función para realizar la actualización
         def iniciar_actualizacion():
-            try:
-                # Aquí cargamos la ruta de la carpeta solo al ejecutar la actualización
-                if not self.app_folder:
-                    self.app_folder = self.cargar_ruta_app()
-                if not self.app_folder:
-                    self.app_folder = self.seleccionar_carpeta()  # Solicitar la carpeta si no se ha configurado
+            def tarea():
+                try:
+                    # Aquí cargamos la ruta de la carpeta solo al ejecutar la actualización
+                    if not self.app_folder:
+                        self.app_folder = self.cargar_ruta_app()
+                    if not self.app_folder:
+                        self.app_folder = self.seleccionar_carpeta()  # Solicitar la carpeta si no se ha configurado
 
-                self.descargar_y_actualizar(descarga_barra, descarga_progress, descompresion_barra, descompresion_progress, reemplazo_barra, reemplazo_progress)
-                messagebox.showinfo("Éxito", "La aplicación se actualizó correctamente.")
-                root.quit()
-            except Exception as e:
-                messagebox.showerror("Error", f"Hubo un error durante la actualización: {e}")
-                root.quit()
+                    # Asegúrate de pasar todos los argumentos necesarios
+                    self.descargar_y_actualizar(barra_progreso, progreso, log_mensaje)
+                    root.after(0, lambda: messagebox.showinfo("Éxito", "La aplicación se actualizó correctamente."))
+                except Exception as e:
+                    log_mensaje(f"Hubo un error durante la actualización: {e}", error=True)
+
+            # Ejecutar la tarea en un hilo separado
+            hilo = threading.Thread(target=tarea)
+            hilo.start()
 
         # Botón para iniciar la actualización
-        actualizar_button = tk.Button(root, text="Iniciar actualización", command=iniciar_actualizacion)
-        actualizar_button.pack(pady=20)
+        actualizar_button = ctk.CTkButton(main_frame, text="Iniciar actualización", command=iniciar_actualizacion)
+        actualizar_button.pack(pady=20, side='bottom')  # Asegurar que el botón esté siempre visible
+
+        # Manejar el evento de cierre de la ventana
+        def on_closing():
+            if messagebox.askokcancel("Cerrar", "¿Estás seguro de que deseas cerrar la ventana de actualización?"):
+                root.destroy()
+
+        root.protocol("WM_DELETE_WINDOW", on_closing)
 
         root.mainloop()
 
-    def descargar_y_actualizar(self, descarga_barra, descarga_progress, descompresion_barra, descompresion_progress, reemplazo_barra, reemplazo_progress):
+    def descargar_y_actualizar(self, barra_progreso, progreso, log_mensaje):
         """Descarga la actualización, la descomprime y reinicia la aplicación."""
         try:
             if not self.download_url:
                 raise ValueError("No hay URL de descarga disponible.")
 
             # Descargar la actualización
-            print(f"Descargando actualización desde {self.download_url}...")
+            log_mensaje(f"Descargando actualización desde {self.download_url}...")
             response = requests.get(self.download_url, stream=True)
             total_size = int(response.headers.get('content-length', 0))
             downloaded = 0
@@ -140,28 +176,31 @@ class ActualizadorApp:
                 for data in response.iter_content(chunk_size=1024):
                     downloaded += len(data)
                     f.write(data)
-                    descarga_progress.set((downloaded / total_size) * 100)
-                    descarga_barra.update_idletasks()
+                    progreso.set((downloaded / total_size) * 100)
+                    barra_progreso.update_idletasks()
 
             # Descomprimir el archivo ZIP recibido
+            log_mensaje("Descomprimiendo archivos...")
             update_folder = "update_folder"
             if not os.path.exists(update_folder):
                 os.makedirs(update_folder)
 
-            zip_file = zipfile.ZipFile("update.zip")
-            total_files = len(zip_file.namelist())
-            extracted = 0
+            with zipfile.ZipFile("update.zip", 'r') as zip_file:
+                total_files = len(zip_file.namelist())
+                extracted = 0
 
-            for file in zip_file.namelist():
-                zip_file.extract(file, update_folder)
-                extracted += 1
-                descompresion_progress.set((extracted / total_files) * 100)
-                descompresion_barra.update_idletasks()
+                for file in zip_file.namelist():
+                    zip_file.extract(file, update_folder)
+                    extracted += 1
+                    progreso.set(50 + (extracted / total_files) * 25)  # Ajuste para reflejar el progreso
+                    barra_progreso.update_idletasks()
 
             # Crear una copia de seguridad antes de reemplazar los archivos
+            log_mensaje("Creando copia de seguridad...")
             self.respaldo_archivos()
 
             # Reemplazar los archivos antiguos con los nuevos
+            log_mensaje("Reemplazando archivos...")
             total_files_to_replace = len(os.listdir(update_folder))
             replaced = 0
             for item in os.listdir(update_folder):
@@ -174,17 +213,19 @@ class ActualizadorApp:
                 else:
                     shutil.copy2(source, destination)  # Copiar archivo (manteniendo metadatos)
                 replaced += 1
-                reemplazo_progress.set((replaced / total_files_to_replace) * 100)
-                reemplazo_barra.update_idletasks()
+                progreso.set(75 + (replaced / total_files_to_replace) * 25)  # Ajuste para reflejar el progreso
+                barra_progreso.update_idletasks()
 
             # Limpiar la carpeta temporal de la actualización
+            log_mensaje("Limpiando archivos temporales...")
             shutil.rmtree(update_folder)
             os.remove("update.zip")
 
             # Reiniciar la aplicación
+            log_mensaje("Reiniciando la aplicación...")
             self.reiniciar_aplicacion()
         except Exception as e:
-            print(f"Error al descargar o descomprimir la actualización: {e}")
+            log_mensaje(f"Error al descargar o descomprimir la actualización: {e}", error=True)
             # Restaurar la aplicación a su estado anterior si ocurrió un error
             self.restaurar_respaldo()
 
@@ -225,7 +266,10 @@ class ActualizadorApp:
             if os.path.isdir(source):
                 if not os.path.exists(destination):
                     os.makedirs(destination)
-                self.reemplazar_archivos(source, destination)  # Llamada recursiva si hay subdirectorios
+                for item in os.listdir(source):
+                    s_item = os.path.join(source, item)
+                    d_item = os.path.join(destination, item)
+                    self.reemplazar_archivos(s_item, d_item)  # Llamada recursiva si hay subdirectorios
             else:
                 shutil.copy2(source, destination)  # Copiar archivo
         except Exception as e:
@@ -234,7 +278,8 @@ class ActualizadorApp:
     def reiniciar_aplicacion(self):
         """Reinicia la aplicación después de la actualización."""
         print("Reiniciando la aplicación...")
-        os.execl(sys.executable, sys.executable, *sys.argv)  # Reiniciar la aplicación
+        python = sys.executable
+        os.execl(python, python, *sys.argv)  # Reiniciar la aplicación
 
 
 class DescargadorTextoApp:
