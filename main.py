@@ -514,11 +514,14 @@ class DescargadorTextoApp:
                 except Exception as e:
                     self.mostrar_mensaje("Error al verificar la contraseña: No se encontró el mensaje de error.")
 
-                # Encontrar y extraer el contenido en etiquetas <strong> y <p>
+                # Encontrar y extraer el contenido en etiquetas <strong>, <em>, y <p>
                 contenedor = driver.find_element(By.CLASS_NAME, 'entry-content-wrap')
                 contenido_texto = []
-                for elemento in contenedor.find_elements(By.XPATH, './/strong | .//p'):
-                    contenido_texto.append(elemento.text)
+                for elemento in contenedor.find_elements(By.XPATH, './/p | .//strong | .//em'):
+                    # Evitar duplicados verificando si el texto ya está en la lista
+                    texto = elemento.text.strip()
+                    if texto and texto not in contenido_texto:
+                        contenido_texto.append(texto)
 
                 # Buscar imágenes en <figure class="swiper-slide-inner"> con <img class="swiper-slide-image">
                 imagenes = []
@@ -559,6 +562,9 @@ class DescargadorTextoApp:
                     self.mostrar_mensaje(f"PDF creado: {ruta_pdf}")
                     self.label_pdf_path.configure(text=f"PDF guardado en: {ruta_pdf}")
                     self.label_pdf_path.bind("<Button-1>", lambda e: os.startfile(ruta_pdf))
+
+                    # Mostrar un popup informando al usuario que el PDF se ha guardado
+                    messagebox.showinfo("Descarga Completa", f"El PDF ha sido guardado exitosamente en: {ruta_pdf}")
 
                 # Eliminar imágenes temporales después de crear el PDF
                 for img in imagenes:
