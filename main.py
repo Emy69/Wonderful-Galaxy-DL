@@ -21,12 +21,13 @@ from selenium.webdriver.support import expected_conditions as EC
 from tkinter import filedialog, messagebox
 from tkinter import messagebox
 from PIL import Image as PilImage, ImageTk
+from msg import Mensaje  
 
 
 class ActualizadorApp:
     def __init__(self, app_version):
         self.app_version = app_version
-        self.repo_url = "https://api.github.com/repos/Emy69/Scans/releases/latest"  # Reemplaza con la URL de tu repositorio
+        self.repo_url = "https://api.github.com/repos/Emy69/Scans/releases/latest"  
         self.download_url = None
         self.config_file = "config.json"
         self.app_folder = None  # Inicializamos sin la ruta
@@ -239,7 +240,16 @@ class ActualizadorApp:
 class DescargadorTextoApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Descargador de Texto")
+        self.app_version = "V0.0.2"
+        self.root.title(f"Wonderful Galaxy DL - {self.app_version}")
+
+        # Mostrar el mensaje inicial
+        Mensaje()  # Crear una instancia de Mensaje para mostrar la ventana emergente
+
+        # Establecer el icono de la ventana
+        icon_path = "img/cropped-Wonderful-32x32.png"  # Ruta a la imagen de 32x32
+        icon_image = tk.PhotoImage(file=icon_path)
+        self.root.iconphoto(False, icon_image)
 
         # Obtener el tamaño de la pantalla
         screen_width = self.root.winfo_screenwidth()
@@ -258,10 +268,10 @@ class DescargadorTextoApp:
 
         # Menú personalizado en la parte superior
         self.menu_bar = ctk.CTkFrame(root)
-        self.menu_bar.pack(side='top', fill='x')
+        self.menu_bar.pack(side='top', fill='x', pady=5)
 
         # Llamar al verificador de actualizaciones
-        self.actualizador = ActualizadorApp(app_version="V0.0.2")  # Tu versión actual
+        self.actualizador = ActualizadorApp(self.app_version)
         self.verificar_actualizacion()
 
         self.create_custom_menubar()
@@ -274,39 +284,39 @@ class DescargadorTextoApp:
         ctk.set_default_color_theme("blue")
 
         # Campo de entrada para la URL
-        self.label_url = ctk.CTkLabel(self.frame, text="Ingresa la URL a escanear:")
-        self.label_url.pack(pady=20)
-        self.entry_url = ctk.CTkEntry(self.frame, width=200)
-        self.entry_url.pack(pady=10)
+        self.label_url = ctk.CTkLabel(self.frame, text="Ingresa la URL a escanear:", font=("Helvetica", 14))
+        self.label_url.pack(pady=10)
+        self.entry_url = ctk.CTkEntry(self.frame, width=300)
+        self.entry_url.pack(pady=5)
 
         # Campo de entrada para la contraseña
-        self.label_password = ctk.CTkLabel(self.frame, text="Ingresa la contraseña:")
-        self.label_password.pack(pady=20)
-        self.entry_password = ctk.CTkEntry(self.frame, width=200, show='*')
-        self.entry_password.pack(pady=10)
+        self.label_password = ctk.CTkLabel(self.frame, text="Ingresa la contraseña:", font=("Helvetica", 14))
+        self.label_password.pack(pady=10)
+        self.entry_password = ctk.CTkEntry(self.frame, width=300, show='*')
+        self.entry_password.pack(pady=5)
 
         # Cargar datos guardados si existen
         self.cargar_datos()
 
         # Botón para escanear
-        self.boton_scanear = ctk.CTkButton(self.frame, text="Acceder y Escanear", command=self.descargar_texto)
+        self.boton_scanear = ctk.CTkButton(self.frame, text="Acceder y Escanear", command=self.descargar_texto, width=200)
         self.boton_scanear.pack(pady=20)
 
         # Área de texto para mostrar el resultado
-        self.text_area = ctk.CTkTextbox(self.frame, width=500, height=200, state='normal')
+        self.text_area = ctk.CTkTextbox(self.frame, width=600, height=250, state='normal')
         self.text_area.pack(pady=20)
-        self.text_area.configure(state='disabled')  # Iniciar deshabilitada
+        self.text_area.configure(state='disabled')
 
         # Barra de progreso
-        self.progress_bar = ctk.CTkProgressBar(self.frame)
+        self.progress_bar = ctk.CTkProgressBar(self.frame, width=600)
         self.progress_bar.pack(pady=20)
 
         # Etiqueta para mostrar la ruta del PDF
-        self.label_pdf_path = ctk.CTkLabel(self.frame, text="")
+        self.label_pdf_path = ctk.CTkLabel(self.frame, text="", font=("Helvetica", 12))
         self.label_pdf_path.pack(pady=10)
 
         # Inicializar el log
-        self.log_mensajes = []  # Lista para almacenar los mensajes del log
+        self.log_mensajes = []
 
     def verificar_actualizacion(self):
         """Verifica si hay una actualización disponible y la descarga si es necesario."""
