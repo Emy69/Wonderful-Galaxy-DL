@@ -23,6 +23,7 @@ from tkinter import filedialog, messagebox
 from tkinter import messagebox
 from PIL import Image as PilImage, ImageTk
 from msg import Mensaje  
+from packaging import version
 
 
 class ActualizadorApp:
@@ -68,7 +69,7 @@ class ActualizadorApp:
             data = response.json()
 
             latest_version = data["tag_name"]  # Última versión disponible
-            if latest_version > self.app_version:
+            if version.parse(latest_version) > version.parse(self.app_version):
                 self.download_url = data["assets"][0]["browser_download_url"]
                 # Preguntar al usuario si desea actualizar
                 respuesta = messagebox.askyesno("Actualización disponible", "Hay una nueva actualización disponible. ¿Quieres actualizar ahora?")
@@ -285,7 +286,7 @@ class ActualizadorApp:
 class DescargadorTextoApp:
     def __init__(self, root):
         self.root = root
-        self.app_version = "V0.0.2"
+        self.app_version = "V0.0.4"
         self.root.title(f"Wonderful Galaxy DL - {self.app_version}")
 
         # Mostrar el mensaje inicial
@@ -371,7 +372,7 @@ class DescargadorTextoApp:
                 if respuesta:
                     self.actualizador.descargar_y_actualizar()
             else:
-                print("Ya tienes la última versión.")
+                self.mostrar_mensaje("Ya tienes la última versión.")  # Mostrar en el log
 
         # Ejecutar la tarea en un hilo para no bloquear la interfaz
         hilo = threading.Thread(target=tarea)
@@ -551,17 +552,6 @@ class DescargadorTextoApp:
                 WebDriverWait(driver, 10).until(
                     EC.presence_of_element_located((By.CLASS_NAME, 'entry-content-wrap'))
                 )
-
-                # Verificar si hubo un error de contraseña
-                try:
-                    error_login = WebDriverWait(driver, 10).until(
-                        EC.presence_of_element_located((By.ID, "login_error"))
-                    )
-                    self.mostrar_mensaje("Contraseña incorrecta. Por favor, inténtalo de nuevo.")
-                    driver.quit()
-                    return
-                except Exception as e:
-                    self.mostrar_mensaje("Error al verificar la contraseña: No se encontró el mensaje de error.")
 
                 # Encontrar y extraer el contenido en etiquetas <strong>, <em>, y <p>
                 contenedor = driver.find_element(By.CLASS_NAME, 'entry-content-wrap')
@@ -758,13 +748,30 @@ class DescargadorTextoApp:
         pdf = FPDF()
         pdf.add_page()
 
-        # Establecer fuente a DejaVuSans (soporta Unicode)
-        pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
-        pdf.set_font('DejaVu', '', 12)  # Usar la fuente DejaVuSans
+        # Ruta de la carpeta de fuentes
+        font_path = 'fonts/'
+
+        # Establecer fuentes Roboto desde la carpeta de fuentes
+        pdf.add_font('Roboto', '', f'{font_path}Roboto-Regular.ttf', uni=True)
+        pdf.add_font('Roboto', 'I', f'{font_path}Roboto-Italic.ttf', uni=True)  # Fuente itálica
+        pdf.set_font('Roboto', '', 12)  # Ajustar el tamaño de la fuente según sea necesario
 
         # Añadir contenido de texto
         for texto in contenido_texto:
-            pdf.multi_cell(0, 10, texto)
+            if texto.startswith('<em>') and texto.endswith('</em>'):
+                pdf.set_font('Roboto', 'I', 12)  # Cambiar a fuente itálica
+                texto = texto[4:-5]  # Remover etiquetas <em>
+            else:
+                pdf.set_font('Roboto', '', 12)  # Volver a la fuente normal
+
+            # Reemplazar guiones y comillas si es necesario
+            texto = texto.replace("—", "-").replace("“", "\"").replace("”", "\"")
+
+            pdf.multi_cell(0, 10, texto)  # Ajustar el espaciado entre líneas
+
+            # Añadir un salto de línea si el texto es de un párrafo o span
+            if texto.endswith('</p>') or texto.endswith('</span>') or texto.endswith('</em>'):
+                pdf.ln(5)  # Ajustar el salto de línea
 
         # Añadir imágenes
         for imagen in imagenes:
