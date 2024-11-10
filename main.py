@@ -1,30 +1,63 @@
 import io
-import subprocess
+import os
 import sys
+import json
+import shutil
 import zipfile
+import requests
+import threading
+import webbrowser
+import subprocess
+import tkinter as tk
+import customtkinter as ctk
+
+from fpdf import FPDF
+from PIL import Image
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-import customtkinter as ctk
-import threading
-from fpdf import FPDF
 from tkinter import filedialog, messagebox
-import os
-import requests
-import json
-from PIL import Image
-import webbrowser
-import tkinter as tk
 from tkinter import messagebox
 from PIL import Image as PilImage, ImageTk
+
 
 class ActualizadorApp:
     def __init__(self, app_version):
         self.app_version = app_version
         self.repo_url = "https://api.github.com/repos/Emy69/Scans/releases/latest"  # Reemplaza con la URL de tu repositorio
         self.download_url = None
+        self.config_file = "config.json"
+        self.app_folder = None  # Inicializamos sin la ruta
+
+    def cargar_ruta_app(self):
+        """Carga la ruta de la carpeta de la aplicación desde un archivo de configuración,
+        o pide la ruta al usuario usando filedialog si no existe el archivo de configuración."""
+        if os.path.exists(self.config_file):
+            with open(self.config_file, "r") as f:
+                config = json.load(f)
+                return config.get("app_folder", "")
+        else:
+            return None  # No hay ruta configurada aún
+
+    def seleccionar_carpeta(self):
+        """Abre un cuadro de diálogo para seleccionar la carpeta de la aplicación y guarda la ruta en un archivo de configuración."""
+        root = tk.Tk()
+        root.withdraw()  # Ocultar la ventana principal de Tkinter
+        carpeta = filedialog.askdirectory(title="Selecciona la carpeta de la aplicación")
+        if carpeta:
+            self.app_folder = carpeta
+            self.guardar_ruta_app()
+            return carpeta
+        else:
+            raise ValueError("No se seleccionó una carpeta válida")
+
+    def guardar_ruta_app(self):
+        """Guarda la ruta de la carpeta de la aplicación en un archivo de configuración."""
+        config = {"app_folder": self.app_folder}
+        with open(self.config_file, "w") as f:
+            json.dump(config, f)
 
     def verificar_actualizacion(self):
         """Verifica si existe una actualización disponible en GitHub."""
@@ -41,31 +74,166 @@ class ActualizadorApp:
             print(f"Error al verificar actualización: {e}")
             return False
 
-    def descargar_y_actualizar(self):
+    def mostrar_ventana_actualizacion(self):
+        """Muestra una ventana de actualización con barras de progreso."""
+        root = tk.Tk()
+        root.title("Actualización de la aplicación")
+        
+        # Barra de progreso para la descarga
+        descarga_label = tk.Label(root, text="Descargando actualización...")
+        descarga_label.pack(pady=10)
+        descarga_progress = tk.DoubleVar()
+        descarga_barra = tk.Progressbar(root, variable=descarga_progress, maximum=100)
+        descarga_barra.pack(pady=10, fill='x')
+
+        # Barra de progreso para la descompresión
+        descompresion_label = tk.Label(root, text="Descomprimiendo archivos...")
+        descompresion_label.pack(pady=10)
+        descompresion_progress = tk.DoubleVar()
+        descompresion_barra = tk.Progressbar(root, variable=descompresion_progress, maximum=100)
+        descompresion_barra.pack(pady=10, fill='x')
+
+        # Barra de progreso para el reemplazo de archivos
+        reemplazo_label = tk.Label(root, text="Reemplazando archivos...")
+        reemplazo_label.pack(pady=10)
+        reemplazo_progress = tk.DoubleVar()
+        reemplazo_barra = tk.Progressbar(root, variable=reemplazo_progress, maximum=100)
+        reemplazo_barra.pack(pady=10, fill='x')
+
+        # Función para realizar la actualización
+        def iniciar_actualizacion():
+            try:
+                # Aquí cargamos la ruta de la carpeta solo al ejecutar la actualización
+                if not self.app_folder:
+                    self.app_folder = self.cargar_ruta_app()
+                if not self.app_folder:
+                    self.app_folder = self.seleccionar_carpeta()  # Solicitar la carpeta si no se ha configurado
+
+                self.descargar_y_actualizar(descarga_barra, descarga_progress, descompresion_barra, descompresion_progress, reemplazo_barra, reemplazo_progress)
+                messagebox.showinfo("Éxito", "La aplicación se actualizó correctamente.")
+                root.quit()
+            except Exception as e:
+                messagebox.showerror("Error", f"Hubo un error durante la actualización: {e}")
+                root.quit()
+
+        # Botón para iniciar la actualización
+        actualizar_button = tk.Button(root, text="Iniciar actualización", command=iniciar_actualizacion)
+        actualizar_button.pack(pady=20)
+
+        root.mainloop()
+
+    def descargar_y_actualizar(self, descarga_barra, descarga_progress, descompresion_barra, descompresion_progress, reemplazo_barra, reemplazo_progress):
         """Descarga la actualización, la descomprime y reinicia la aplicación."""
         try:
             if not self.download_url:
                 raise ValueError("No hay URL de descarga disponible.")
 
-            response = requests.get(self.download_url)
-            if response.status_code == 200:
-                zip_file = zipfile.ZipFile(io.BytesIO(response.content))
-                zip_file.extractall("update_folder")  # Extrae los archivos en una carpeta temporal
-                print("Actualización descargada y descomprimida.")
-                
-                # Aquí debes reemplazar con la lógica para actualizar tu app
-                # (esto dependerá de cómo se haya organizado el código y cómo se construye el archivo ejecutable)
-                self.reiniciar_aplicacion()
-            else:
-                print(f"Error al descargar la actualización: {response.status_code}")
+            # Descargar la actualización
+            print(f"Descargando actualización desde {self.download_url}...")
+            response = requests.get(self.download_url, stream=True)
+            total_size = int(response.headers.get('content-length', 0))
+            downloaded = 0
+
+            # Descargar archivo y actualizar la barra de progreso
+            with open("update.zip", "wb") as f:
+                for data in response.iter_content(chunk_size=1024):
+                    downloaded += len(data)
+                    f.write(data)
+                    descarga_progress.set((downloaded / total_size) * 100)
+                    descarga_barra.update_idletasks()
+
+            # Descomprimir el archivo ZIP recibido
+            update_folder = "update_folder"
+            if not os.path.exists(update_folder):
+                os.makedirs(update_folder)
+
+            zip_file = zipfile.ZipFile("update.zip")
+            total_files = len(zip_file.namelist())
+            extracted = 0
+
+            for file in zip_file.namelist():
+                zip_file.extract(file, update_folder)
+                extracted += 1
+                descompresion_progress.set((extracted / total_files) * 100)
+                descompresion_barra.update_idletasks()
+
+            # Crear una copia de seguridad antes de reemplazar los archivos
+            self.respaldo_archivos()
+
+            # Reemplazar los archivos antiguos con los nuevos
+            total_files_to_replace = len(os.listdir(update_folder))
+            replaced = 0
+            for item in os.listdir(update_folder):
+                source = os.path.join(update_folder, item)
+                destination = os.path.join(self.app_folder, item)
+                if os.path.isdir(source):
+                    if not os.path.exists(destination):
+                        os.makedirs(destination)
+                    self.reemplazar_archivos(source, destination)  # Llamada recursiva si hay subdirectorios
+                else:
+                    shutil.copy2(source, destination)  # Copiar archivo (manteniendo metadatos)
+                replaced += 1
+                reemplazo_progress.set((replaced / total_files_to_replace) * 100)
+                reemplazo_barra.update_idletasks()
+
+            # Limpiar la carpeta temporal de la actualización
+            shutil.rmtree(update_folder)
+            os.remove("update.zip")
+
+            # Reiniciar la aplicación
+            self.reiniciar_aplicacion()
         except Exception as e:
             print(f"Error al descargar o descomprimir la actualización: {e}")
+            # Restaurar la aplicación a su estado anterior si ocurrió un error
+            self.restaurar_respaldo()
+
+    def respaldo_archivos(self):
+        """Crea una copia de seguridad de los archivos de la aplicación."""
+        backup_folder = "app_backup"  # Ruta donde se almacenará el respaldo
+
+        try:
+            # Verificar si ya existe una copia de seguridad
+            if os.path.exists(backup_folder):
+                print("Ya existe una copia de seguridad.")
+            else:
+                # Crear una copia de seguridad de la carpeta de la aplicación
+                shutil.copytree(self.app_folder, backup_folder)
+                print("Copia de seguridad creada exitosamente.")
+        except Exception as e:
+            print(f"Error al crear la copia de seguridad: {e}")
+
+    def restaurar_respaldo(self):
+        """Restaura los archivos de la aplicación desde el respaldo en caso de error."""
+        backup_folder = "app_backup"
+
+        try:
+            if os.path.exists(backup_folder):
+                # Eliminar los archivos actuales de la aplicación
+                shutil.rmtree(self.app_folder)
+                # Restaurar la copia de seguridad
+                shutil.copytree(backup_folder, self.app_folder)
+                print("Respaldo restaurado correctamente.")
+            else:
+                print("No se encontró la copia de seguridad para restaurar.")
+        except Exception as e:
+            print(f"Error al restaurar el respaldo: {e}")
+
+    def reemplazar_archivos(self, source, destination):
+        """Reemplaza los archivos actuales con los archivos extraídos de la actualización."""
+        try:
+            if os.path.isdir(source):
+                if not os.path.exists(destination):
+                    os.makedirs(destination)
+                self.reemplazar_archivos(source, destination)  # Llamada recursiva si hay subdirectorios
+            else:
+                shutil.copy2(source, destination)  # Copiar archivo
+        except Exception as e:
+            print(f"Error al reemplazar los archivos: {e}")
 
     def reiniciar_aplicacion(self):
-        """Reinicia la aplicación después de actualizar."""
+        """Reinicia la aplicación después de la actualización."""
         print("Reiniciando la aplicación...")
-        subprocess.Popen([sys.executable] + sys.argv)  # Reinicia la aplicación
-        os._exit(0)  # Cierra la aplicación actual
+        os.execl(sys.executable, sys.executable, *sys.argv)  # Reiniciar la aplicación
 
 
 class DescargadorTextoApp:
@@ -93,7 +261,7 @@ class DescargadorTextoApp:
         self.menu_bar.pack(side='top', fill='x')
 
         # Llamar al verificador de actualizaciones
-        self.actualizador = ActualizadorApp(app_version="0.0.1")  # Tu versión actual
+        self.actualizador = ActualizadorApp(app_version="V0.0.2")  # Tu versión actual
         self.verificar_actualizacion()
 
         self.create_custom_menubar()
