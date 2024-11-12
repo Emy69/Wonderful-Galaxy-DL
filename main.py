@@ -420,6 +420,18 @@ class DescargadorTextoApp:
         donaciones_button.pack(side="left")
         donaciones_button.bind("<Button-1>", lambda e: "break")
 
+        # Botón Historial
+        historial_button = ctk.CTkButton(
+            self.menu_bar,
+            text="Historial",
+            width=80,
+            fg_color="transparent",
+            hover_color="gray25",
+            command=self.show_historial_window
+        )
+        historial_button.pack(side="left")
+        historial_button.bind("<Button-1>", lambda e: "break")
+
         # Inicializar variables para los menús desplegables
         self.archivo_menu_frame = None
         self.ayuda_menu_frame = None
@@ -602,6 +614,10 @@ class DescargadorTextoApp:
                     self.label_pdf_path.configure(text=f"PDF guardado en: {ruta_pdf}")
                     self.label_pdf_path.bind("<Button-1>", lambda e: os.startfile(ruta_pdf))
 
+                    # Guardar en el historial
+                    nombre_pdf = os.path.basename(ruta_pdf)
+                    self.guardar_historial(nombre_pdf, "", "")
+
                     # Mostrar un popup informando al usuario que el PDF se ha guardado
                     messagebox.showinfo("Descarga Completa", f"El PDF ha sido guardado exitosamente en: {ruta_pdf}")
 
@@ -779,6 +795,110 @@ class DescargadorTextoApp:
             pdf.image(imagen, x=10, y=10, w=100)  # Ajustar según sea necesario
 
         pdf.output(ruta)
+
+    def show_historial_window(self):
+        """Muestra una ventana para gestionar el historial de descargas."""
+        historial_window = tk.Toplevel(self.root)
+        historial_window.title("Historial de Descargas")
+
+        # Configurar tamaño y centrar la ventana
+        width = 800
+        height = 400
+        historial_window.geometry(f"{width}x{height}")
+        self.center_window(historial_window)
+
+        # Crear un frame para el contenido
+        frame = ctk.CTkFrame(historial_window)
+        frame.pack(pady=20, padx=20, fill='both', expand=True)
+
+        # Cargar historial desde JSON
+        historial = self.cargar_historial()
+
+        # Crear una lista para mostrar el historial
+        for idx, item in enumerate(historial):
+            label_nombre = ctk.CTkLabel(frame, text=f"PDF: {item['nombre']}", font=("Helvetica", 12))
+            label_nombre.grid(row=idx, column=0, padx=5, pady=5)
+
+            # Crear campos de entrada para calificación y comentario
+            entry_calificacion = ctk.CTkEntry(frame, width=100)
+            entry_calificacion.insert(0, item.get("calificacion", ""))
+            entry_calificacion.grid(row=idx, column=1, padx=5, pady=5)
+
+            entry_comentario = ctk.CTkEntry(frame, width=100)
+            entry_comentario.insert(0, item.get("comentario", ""))
+            entry_comentario.grid(row=idx, column=2, padx=5, pady=5)
+
+            # Botón para guardar cambios
+            guardar_button = ctk.CTkButton(frame, text="Guardar", command=lambda i=idx: self.guardar_cambios_historial(i, entry_calificacion, entry_comentario, guardar_button))
+            guardar_button.grid(row=idx, column=3, padx=5, pady=5)
+
+    def cargar_historial(self):
+        """Carga el historial desde un archivo JSON."""
+        if os.path.exists("Historial/historial.json"):
+            with open("Historial/historial.json", "r", encoding="utf-8") as json_file:
+                return [json.loads(line) for line in json_file]
+        return []
+
+    def guardar_cambios_historial(self, index, entry_calificacion, entry_comentario, guardar_button):
+        """Guarda los cambios realizados en el historial y actualiza la interfaz."""
+        historial = self.cargar_historial()
+        if 0 <= index < len(historial):
+            calificacion = entry_calificacion.get()
+            comentario = entry_comentario.get()
+            historial[index]["calificacion"] = calificacion
+            historial[index]["comentario"] = comentario
+
+            # Guardar el historial actualizado
+            with open("Historial/historial.json", "w", encoding="utf-8") as json_file:
+                for item in historial:
+                    json.dump(item, json_file)
+                    json_file.write("\n")
+
+            messagebox.showinfo("Guardado", "Los cambios han sido guardados exitosamente.")
+
+            # Convertir los entrys en labels
+            entry_calificacion.grid_forget()
+            entry_comentario.grid_forget()
+
+            label_calificacion = ctk.CTkLabel(entry_calificacion.master, text=calificacion, width=30)
+            label_calificacion.grid(row=index, column=1, padx=5, pady=5)
+
+            label_comentario = ctk.CTkLabel(entry_comentario.master, text=comentario, width=60)
+            label_comentario.grid(row=index, column=2, padx=5, pady=5)
+
+            # Cambiar el botón a "Editar"
+            guardar_button.configure(text="Editar", command=lambda: self.editar_historial(index, label_calificacion, label_comentario, guardar_button))
+
+    def editar_historial(self, index, label_calificacion, label_comentario, editar_button):
+        """Permite editar la calificación y el comentario."""
+        label_calificacion.grid_forget()
+        label_comentario.grid_forget()
+
+        entry_calificacion = ctk.CTkEntry(label_calificacion.master, width=90)
+        entry_calificacion.insert(0, label_calificacion.cget("text"))
+        entry_calificacion.grid(row=index, column=1, padx=5, pady=5)
+
+        entry_comentario = ctk.CTkEntry(label_comentario.master, width=60)
+        entry_comentario.insert(0, label_comentario.cget("text"))
+        entry_comentario.grid(row=index, column=2, padx=5, pady=5)
+
+        # Cambiar el botón a "Guardar"
+        editar_button.configure(text="Guardar", command=lambda: self.guardar_cambios_historial(index, entry_calificacion, entry_comentario, editar_button))
+
+    def guardar_historial(self, nombre, calificacion, comentario):
+        """Guarda un nuevo registro en el historial."""
+        if not os.path.exists("Historial"):
+            os.makedirs("Historial")
+
+        historial = {
+            "nombre": nombre,
+            "calificacion": calificacion,
+            "comentario": comentario
+        }
+
+        with open("Historial/historial.json", "a", encoding="utf-8") as json_file:
+            json.dump(historial, json_file)
+            json_file.write("\n")  # Añadir una nueva línea para cada entrada
 
 if __name__ == "__main__":
     ventana = ctk.CTk()
