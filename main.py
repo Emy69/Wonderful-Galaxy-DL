@@ -25,6 +25,10 @@ from PIL import Image as PilImage, ImageTk
 from msg import Mensaje  
 from packaging import version
 
+from bs4 import BeautifulSoup
+from googletrans import Translator
+from deep_translator import GoogleTranslator
+
 
 class ActualizadorApp:
     def __init__(self, app_version):
@@ -344,8 +348,8 @@ class DescargadorTextoApp:
         # Cargar datos guardados si existen
         self.cargar_datos()
 
-        # Botón para escanear
-        self.boton_scanear = ctk.CTkButton(self.frame, text="Acceder y Escanear", command=self.descargar_texto, width=200)
+        # Botón para escanear o descargar y traducir
+        self.boton_scanear = ctk.CTkButton(self.frame, text="Acceder y Escanear", command=self.procesar_url)
         self.boton_scanear.pack(pady=20)
 
         # Área de texto para mostrar el resultado
@@ -783,18 +787,7 @@ class DescargadorTextoApp:
             # Reemplazar guiones y comillas si es necesario
             texto = texto.replace("—", "-").replace("“", "\"").replace("”", "\"")
 
-            pdf.multi_cell(0, 10, texto)  # Ajustar el espaciado entre líneas
-
-            # Añadir un salto de línea si el texto es de un párrafo o span
-            if texto.endswith('</p>') or texto.endswith('</span>') or texto.endswith('</em>'):
-                pdf.ln(5)  # Ajustar el salto de línea
-
-        # Añadir imágenes
-        for imagen in imagenes:
-            pdf.add_page()
-            pdf.image(imagen, x=10, y=10, w=100)  # Ajustar según sea necesario
-
-        pdf.output(ruta)
+        self.mostrar_mensaje("PDF creado exitosamente.")
 
     def show_historial_window(self):
         """Muestra una ventana para gestionar el historial de descargas."""
@@ -899,6 +892,85 @@ class DescargadorTextoApp:
         with open("Historial/historial.json", "a", encoding="utf-8") as json_file:
             json.dump(historial, json_file)
             json_file.write("\n")  # Añadir una nueva línea para cada entrada
+
+    def procesar_url(self):
+        """Determina el tipo de URL y ejecuta la acción correspondiente."""
+        url = self.entry_url.get()
+        if not url:
+            messagebox.showerror("Error", "Por favor, ingresa una URL.")
+            return
+
+        if "archiveofourown.org" in url:
+            self.descargar_y_traducir_html(url)
+        else:
+            self.descargar_texto()
+
+    def descargar_y_traducir_html(self, url):
+        """Inicia un hilo para descargar y traducir el HTML."""
+        threading.Thread(target=self._descargar_y_traducir_html, args=(url,)).start()
+
+    def _descargar_y_traducir_html(self, url):
+        """Descarga el HTML de una página de AO3, traduce el texto y lo guarda en un PDF."""
+        try:
+            self.mostrar_mensaje("Iniciando la descarga de la página...")
+
+            # Descargar el contenido de la página
+            response = requests.get(url)
+            response.raise_for_status()
+            self.mostrar_mensaje("Página descargada exitosamente.")
+
+            # Parsear el HTML
+            soup = BeautifulSoup(response.content, 'html.parser')
+            workskin_div = soup.find('div', id='workskin')
+
+            if not workskin_div:
+                messagebox.showerror("Error", "No se encontró el div con id 'workskin'.")
+                return
+
+            # Extraer títulos y texto
+            chapters_div = workskin_div.find('div', id='chapters')
+            translated_texts = []
+            if chapters_div:
+                chapters = chapters_div.find_all('div', class_='chapter')
+                for chapter in chapters:
+                    title = chapter.find('h2', class_='title heading').get_text(strip=True)
+                    chapter_text = chapter.get_text(separator="\n", strip=True)
+                    translated_text = traducir_texto(chapter_text)
+                    if translated_text is None:
+                        messagebox.showerror("Error", "Error al traducir el texto.")
+                        return
+                    translated_texts.append((title, translated_text))
+            else:
+                title = workskin_div.find('h2', class_='title heading').get_text(strip=True)
+                translated_text = traducir_texto(workskin_div.get_text(separator="\n", strip=True))
+                if translated_text is None:
+                    messagebox.showerror("Error", "Error al traducir el texto.")
+                    return
+                translated_texts = [(title, translated_text)]
+
+            self.mostrar_mensaje("Traducción completada, creando PDF...")
+
+            # Crear el PDF
+            self.crear_pdf(translated_texts)
+
+        except requests.exceptions.RequestException as e:
+            self.mostrar_mensaje(f"Error al descargar la página: {e}")
+        except Exception as e:
+            self.mostrar_mensaje(f"Error al procesar la página: {e}")
+
+def traducir_texto(texto):
+    try:
+        # Dividir el texto en fragmentos de 1000 caracteres
+        fragmentos = [texto[i:i+1000] for i in range(0, len(texto), 1000)]
+        texto_traducido = ""
+        
+        for fragmento in fragmentos:
+            texto_traducido += GoogleTranslator(source='auto', target='es').translate(fragmento) + "\n"
+        
+        return texto_traducido
+    except Exception as e:
+        print(f"Error al traducir el texto: {e}")
+        return None
 
 if __name__ == "__main__":
     ventana = ctk.CTk()
