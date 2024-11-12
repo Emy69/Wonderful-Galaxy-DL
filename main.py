@@ -927,36 +927,92 @@ class DescargadorTextoApp:
                 messagebox.showerror("Error", "No se encontró el div con id 'workskin'.")
                 return
 
-            # Extraer títulos y texto
+            # Extraer el título principal
+            title_element = workskin_div.find('h2', class_='title heading')
+            main_title = title_element.get_text(strip=True) if title_element else "Sin título"
+
+            # Extraer el prefacio o introducción
+            preface_div = workskin_div.find('div', class_='preface group')
+            preface_text = ""
+            if preface_div:
+                preface_text = preface_div.get_text(separator="\n", strip=True)
+                preface_text = traducir_texto(preface_text)
+
+            # Extraer títulos y texto de los capítulos
             chapters_div = workskin_div.find('div', id='chapters')
             translated_texts = []
             if chapters_div:
                 chapters = chapters_div.find_all('div', class_='chapter')
                 for chapter in chapters:
-                    title = chapter.find('h2', class_='title heading').get_text(strip=True)
+                    chapter_title_element = chapter.find('h2', class_='title heading')
+                    chapter_title = chapter_title_element.get_text(strip=True) if chapter_title_element else "Sin título"
                     chapter_text = chapter.get_text(separator="\n", strip=True)
+
+                    # Remover el título del capítulo del texto
+                    if chapter_title in chapter_text:
+                        chapter_text = chapter_text.replace(chapter_title, '', 1).strip()
+
                     translated_text = traducir_texto(chapter_text)
                     if translated_text is None:
                         messagebox.showerror("Error", "Error al traducir el texto.")
                         return
-                    translated_texts.append((title, translated_text))
+                    translated_texts.append((chapter_title, translated_text))
             else:
-                title = workskin_div.find('h2', class_='title heading').get_text(strip=True)
                 translated_text = traducir_texto(workskin_div.get_text(separator="\n", strip=True))
                 if translated_text is None:
                     messagebox.showerror("Error", "Error al traducir el texto.")
                     return
-                translated_texts = [(title, translated_text)]
+                translated_texts = [(main_title, translated_text)]
 
             self.mostrar_mensaje("Traducción completada, creando PDF...")
 
-            # Crear el PDF
-            self.crear_pdf(translated_texts)
+            # Crear el PDF traducido
+            ruta = self.seleccionar_ruta()
+            if ruta:
+                self.crear_pdf_traducido(main_title, preface_text, translated_texts, ruta)
 
         except requests.exceptions.RequestException as e:
             self.mostrar_mensaje(f"Error al descargar la página: {e}")
         except Exception as e:
             self.mostrar_mensaje(f"Error al procesar la página: {e}")
+
+    def crear_pdf_traducido(self, main_title, preface_text, contenido_texto, ruta):
+        pdf = FPDF()
+        pdf.add_page()
+
+        # Ruta de la carpeta de fuentes
+        font_path = 'fonts/'
+
+        # Establecer fuentes Roboto desde la carpeta de fuentes
+        pdf.add_font('Roboto', '', f'{font_path}Roboto-Regular.ttf', uni=True)
+        pdf.add_font('Roboto', 'B', f'{font_path}Roboto-Bold.ttf', uni=True)  # Fuente en negrita
+        pdf.add_font('Roboto', 'I', f'{font_path}Roboto-Italic.ttf', uni=True)  # Fuente itálica
+
+        # Añadir el título principal
+        pdf.set_font('Roboto', 'B', 32)  # Negrita y tamaño 32
+        pdf.cell(0, 10, main_title, ln=True, align='C')  # Centrar el título
+        pdf.ln(10)  # Espacio después del título
+
+        # Añadir prefacio o introducción
+        if preface_text:
+            pdf.set_font('Roboto', '', 12)
+            pdf.multi_cell(0, 10, preface_text, align='J')
+            pdf.ln(10)  # Espacio después del prefacio
+
+        # Añadir contenido de texto
+        for title, texto in contenido_texto:
+            # Formatear el título del capítulo
+            pdf.set_font('Roboto', 'B', 20)  # Negrita y tamaño 24
+            pdf.cell(0, 10, title, ln=True, align='C')  # Centrar el título del capítulo
+            pdf.ln(10)  # Espacio después del título del capítulo
+
+            # Formatear el texto del capítulo
+            pdf.set_font('Roboto', '', 12)  # Fuente normal
+            texto = texto.replace("—", "-").replace("“", "\"").replace("”", "\"")
+            pdf.multi_cell(0, 10, texto, align='J')  # Justificar el texto
+            pdf.ln(5)  # Espacio entre capítulos
+
+        pdf.output(ruta)
 
 def traducir_texto(texto):
     try:
