@@ -37,3 +37,6 @@ Guardado/*
 app_backup/*
 update.zip
 config.json
+wkhtmltox/
+app_backup/
+*.pdf
