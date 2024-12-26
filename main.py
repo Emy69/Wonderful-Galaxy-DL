@@ -3,7 +3,6 @@ import os
 import sys
 import json
 import shutil
-import zipfile
 import requests
 import threading
 import webbrowser
@@ -20,273 +19,13 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from tkinter import filedialog, messagebox
-from tkinter import messagebox
 from PIL import Image as PilImage, ImageTk
 from msg import Mensaje  
-from packaging import version
-
 from bs4 import BeautifulSoup
 from googletrans import Translator
 from deep_translator import GoogleTranslator
 
 from historial import cargar_historial, guardar_historial, guardar_cambios_historial, editar_historial
-
-
-class ActualizadorApp:
-    def __init__(self, app_version):
-        self.app_version = app_version
-        self.repo_url = "https://api.github.com/repos/Emy69/Scans/releases/latest"  
-        self.download_url = None
-        self.config_file = "config.json"
-        self.app_folder = None  # Inicializamos sin la ruta
-
-    def cargar_ruta_app(self):
-        """Carga la ruta de la carpeta de la aplicación desde un archivo de configuración,
-        o pide la ruta al usuario usando filedialog si no existe el archivo de configuración."""
-        if os.path.exists(self.config_file):
-            with open(self.config_file, "r") as f:
-                config = json.load(f)
-                return config.get("app_folder", "")
-        else:
-            return None  # No hay ruta configurada aún
-
-    def seleccionar_carpeta(self):
-        """Abre un cuadro de diálogo para seleccionar la carpeta de la aplicación y guarda la ruta en un archivo de configuración."""
-        root = tk.Tk()
-        root.withdraw()  # Ocultar la ventana principal de Tkinter
-        carpeta = filedialog.askdirectory(title="Selecciona la carpeta de la aplicación")
-        if carpeta:
-            self.app_folder = carpeta
-            self.guardar_ruta_app()
-            return carpeta
-        else:
-            raise ValueError("No se seleccionó una carpeta válida")
-
-    def guardar_ruta_app(self):
-        """Guarda la ruta de la carpeta de la aplicación en un archivo de configuración."""
-        config = {"app_folder": self.app_folder}
-        with open(self.config_file, "w") as f:
-            json.dump(config, f)
-
-    def verificar_actualizacion(self):
-        """Verifica si existe una actualización disponible en GitHub."""
-        try:
-            response = requests.get(self.repo_url)
-            data = response.json()
-
-            latest_version = data["tag_name"]  # Última versión disponible
-            if version.parse(latest_version) > version.parse(self.app_version):
-                self.download_url = data["assets"][0]["browser_download_url"]
-                # Preguntar al usuario si desea actualizar
-                respuesta = messagebox.askyesno("Actualización disponible", "Hay una nueva actualización disponible. ¿Quieres actualizar ahora?")
-                if respuesta:
-                    self.mostrar_ventana_actualizacion()
-                return True
-            return False
-        except Exception as e:
-            print(f"Error al verificar actualización: {e}")
-            return False
-
-    def mostrar_ventana_actualizacion(self):
-        """Muestra una ventana de actualización con una barra de progreso y un área de log."""
-        root = ctk.CTkToplevel()  # Usar Toplevel para crear una ventana secundaria
-        root.title("Actualización de la aplicación")
-        
-        # Centrar la ventana
-        window_width = 400
-        window_height = 300
-        screen_width = root.winfo_screenwidth()
-        screen_height = root.winfo_screenheight()
-        position_top = int(screen_height / 2 - window_height / 2)
-        position_right = int(screen_width / 2 - window_width / 2)
-        root.geometry(f'{window_width}x{window_height}+{position_right}+{position_top}')
-        
-        # Mantener la ventana en primer plano
-        root.attributes('-topmost', True)
-
-        # Frame principal
-        main_frame = ctk.CTkFrame(root)
-        main_frame.pack(pady=10, padx=10, fill='both', expand=True)
-
-        # Barra de progreso
-        progreso_label = ctk.CTkLabel(main_frame, text="Progreso de la actualización...")
-        progreso_label.pack(pady=10)
-        progreso = tk.DoubleVar()
-        barra_progreso = ttk.Progressbar(main_frame, variable=progreso, maximum=100)
-        barra_progreso.pack(pady=10, fill='x')
-
-        # Área de log usando tk.Text
-        log_text = tk.Text(main_frame, height=10, wrap='word', state='disabled')
-        log_text.pack(pady=10, fill='both', expand=True)
-
-        def log_mensaje(mensaje, error=False):
-            def update_log():
-                log_text.configure(state='normal')
-                if error:
-                    log_text.insert(tk.END, f"ERROR: {mensaje}\n", 'error')
-                else:
-                    log_text.insert(tk.END, f"{mensaje}\n")
-                log_text.configure(state='disabled')
-                log_text.see(tk.END)
-
-            root.after(0, update_log)
-
-        log_text.tag_configure('error', foreground='red')
-
-        # Función para realizar la actualización
-        def iniciar_actualizacion():
-            def tarea():
-                try:
-                    # Aquí cargamos la ruta de la carpeta solo al ejecutar la actualización
-                    if not self.app_folder:
-                        self.app_folder = self.cargar_ruta_app()
-                    if not self.app_folder:
-                        self.app_folder = self.seleccionar_carpeta()  # Solicitar la carpeta si no se ha configurado
-
-                    # Asegúrate de pasar todos los argumentos necesarios
-                    self.descargar_y_actualizar(barra_progreso, progreso, log_mensaje)
-                    root.after(0, lambda: messagebox.showinfo("Éxito", "La aplicación se actualizó correctamente."))
-                except Exception as e:
-                    log_mensaje(f"Hubo un error durante la actualización: {e}", error=True)
-
-            # Ejecutar la tarea en un hilo separado
-            hilo = threading.Thread(target=tarea)
-            hilo.start()
-
-        # Botón para iniciar la actualización
-        actualizar_button = ctk.CTkButton(main_frame, text="Iniciar actualización", command=iniciar_actualizacion)
-        actualizar_button.pack(pady=20, side='bottom')  # Asegurar que el botón esté siempre visible
-
-        # Manejar el evento de cierre de la ventana
-        def on_closing():
-            if messagebox.askokcancel("Cerrar", "¿Estás seguro de que deseas cerrar la ventana de actualización?"):
-                root.destroy()
-
-        root.protocol("WM_DELETE_WINDOW", on_closing)
-
-        root.mainloop()
-
-    def descargar_y_actualizar(self, barra_progreso, progreso, log_mensaje):
-        """Descarga la actualización, la descomprime y reinicia la aplicación."""
-        try:
-            if not self.download_url:
-                raise ValueError("No hay URL de descarga disponible.")
-
-            # Descargar la actualización
-            log_mensaje(f"Descargando actualización desde {self.download_url}...")
-            response = requests.get(self.download_url, stream=True)
-            total_size = int(response.headers.get('content-length', 0))
-            downloaded = 0
-
-            # Descargar archivo y actualizar la barra de progreso
-            with open("update.zip", "wb") as f:
-                for data in response.iter_content(chunk_size=1024):
-                    downloaded += len(data)
-                    f.write(data)
-                    progreso.set((downloaded / total_size) * 100)
-                    barra_progreso.update_idletasks()
-
-            # Descomprimir el archivo ZIP recibido
-            log_mensaje("Descomprimiendo archivos...")
-            update_folder = "update_folder"
-            if not os.path.exists(update_folder):
-                os.makedirs(update_folder)
-
-            with zipfile.ZipFile("update.zip", 'r') as zip_file:
-                total_files = len(zip_file.namelist())
-                extracted = 0
-
-                for file in zip_file.namelist():
-                    zip_file.extract(file, update_folder)
-                    extracted += 1
-                    progreso.set(50 + (extracted / total_files) * 25)  # Ajuste para reflejar el progreso
-                    barra_progreso.update_idletasks()
-
-            # Crear una copia de seguridad antes de reemplazar los archivos
-            log_mensaje("Creando copia de seguridad...")
-            self.respaldo_archivos()
-
-            # Reemplazar los archivos antiguos con los nuevos
-            log_mensaje("Reemplazando archivos...")
-            total_files_to_replace = len(os.listdir(update_folder))
-            replaced = 0
-            for item in os.listdir(update_folder):
-                source = os.path.join(update_folder, item)
-                destination = os.path.join(self.app_folder, item)
-                if os.path.isdir(source):
-                    if not os.path.exists(destination):
-                        os.makedirs(destination)
-                    self.reemplazar_archivos(source, destination)  # Llamada recursiva si hay subdirectorios
-                else:
-                    shutil.copy2(source, destination)  # Copiar archivo (manteniendo metadatos)
-                replaced += 1
-                progreso.set(75 + (replaced / total_files_to_replace) * 25)  # Ajuste para reflejar el progreso
-                barra_progreso.update_idletasks()
-
-            # Limpiar la carpeta temporal de la actualización
-            log_mensaje("Limpiando archivos temporales...")
-            shutil.rmtree(update_folder)
-            os.remove("update.zip")
-
-            # Reiniciar la aplicación
-            log_mensaje("Reiniciando la aplicación...")
-            self.reiniciar_aplicacion()
-        except Exception as e:
-            log_mensaje(f"Error al descargar o descomprimir la actualización: {e}", error=True)
-            # Restaurar la aplicación a su estado anterior si ocurrió un error
-            self.restaurar_respaldo()
-
-    def respaldo_archivos(self):
-        """Crea una copia de seguridad de los archivos de la aplicación."""
-        backup_folder = "app_backup"  # Ruta donde se almacenará el respaldo
-
-        try:
-            # Verificar si ya existe una copia de seguridad
-            if os.path.exists(backup_folder):
-                print("Ya existe una copia de seguridad.")
-            else:
-                # Crear una copia de seguridad de la carpeta de la aplicación
-                shutil.copytree(self.app_folder, backup_folder)
-                print("Copia de seguridad creada exitosamente.")
-        except Exception as e:
-            print(f"Error al crear la copia de seguridad: {e}")
-
-    def restaurar_respaldo(self):
-        """Restaura los archivos de la aplicación desde el respaldo en caso de error."""
-        backup_folder = "app_backup"
-
-        try:
-            if os.path.exists(backup_folder):
-                # Eliminar los archivos actuales de la aplicación
-                shutil.rmtree(self.app_folder)
-                # Restaurar la copia de seguridad
-                shutil.copytree(backup_folder, self.app_folder)
-                print("Respaldo restaurado correctamente.")
-            else:
-                print("No se encontró la copia de seguridad para restaurar.")
-        except Exception as e:
-            print(f"Error al restaurar el respaldo: {e}")
-
-    def reemplazar_archivos(self, source, destination):
-        """Reemplaza los archivos actuales con los archivos extraídos de la actualización."""
-        try:
-            if os.path.isdir(source):
-                if not os.path.exists(destination):
-                    os.makedirs(destination)
-                for item in os.listdir(source):
-                    s_item = os.path.join(source, item)
-                    d_item = os.path.join(destination, item)
-                    self.reemplazar_archivos(s_item, d_item)  # Llamada recursiva si hay subdirectorios
-            else:
-                shutil.copy2(source, destination)  # Copiar archivo
-        except Exception as e:
-            print(f"Error al reemplazar los archivos: {e}")
-
-    def reiniciar_aplicacion(self):
-        """Reinicia la aplicación después de la actualización."""
-        print("Reiniciando la aplicación...")
-        python = sys.executable
-        os.execl(python, python, *sys.argv)  # Reiniciar la aplicación
 
 
 class DescargadorTextoApp:
@@ -321,10 +60,6 @@ class DescargadorTextoApp:
         # Menú personalizado en la parte superior
         self.menu_bar = ctk.CTkFrame(root)
         self.menu_bar.pack(side='top', fill='x', pady=5)
-
-        # Llamar al verificador de actualizaciones
-        self.actualizador = ActualizadorApp(self.app_version)
-        self.verificar_actualizacion()
 
         self.create_custom_menubar()
 
@@ -369,21 +104,6 @@ class DescargadorTextoApp:
 
         # Inicializar el log
         self.log_mensajes = []
-
-    def verificar_actualizacion(self):
-        """Verifica si hay una actualización disponible y la descarga si es necesario."""
-        def tarea():
-            if self.actualizador.verificar_actualizacion():
-                respuesta = messagebox.askyesno("Actualización disponible", "¿Hay una nueva actualización disponible. ¿Quieres actualizar ahora?")
-                if respuesta:
-                    self.actualizador.descargar_y_actualizar()
-            else:
-                self.mostrar_mensaje("Ya tienes la última versión.")  # Mostrar en el log
-
-        # Ejecutar la tarea en un hilo para no bloquear la interfaz
-        hilo = threading.Thread(target=tarea)
-        hilo.start()
-
 
     def load_image(self, image_path):
         """Carga una imagen y la devuelve como un objeto PhotoImage."""
@@ -451,7 +171,7 @@ class DescargadorTextoApp:
             self.archivo_menu_frame = self.create_menu_frame([
                 ("Configuraciones", self.open_settings),  # Cambia a tu método para abrir configuraciones
                 ("separator", None),
-                ("Salir", self.salir_aplicacion),  # Cambia a un método que cierre la aplicación
+                ("Salir", self.salir_aplicacion),         # Método que cierre la aplicación
             ], x=0)
 
     def toggle_ayuda_menu(self):
@@ -554,7 +274,7 @@ class DescargadorTextoApp:
                 # Configuración de Selenium y ChromeDriver
                 options = webdriver.ChromeOptions()
                 options.add_argument("--disable-javascript")  # Desactiva JavaScript
-                options.add_argument('--headless')  # Comentar esta línea
+                options.add_argument('--headless')            # Quita esta línea si quieres ver el navegador
                 driver = webdriver.Chrome(options=options)
 
                 driver.get(url)
@@ -584,7 +304,7 @@ class DescargadorTextoApp:
                 imagenes = []
                 for figura in contenedor.find_elements(By.CLASS_NAME, 'swiper-slide-inner'):
                     try:
-                        imagen = figura.find_element(By.TAG_NAME, 'img')  # Definir 'imagen' correctamente
+                        imagen = figura.find_element(By.TAG_NAME, 'img')
                         src = imagen.get_attribute("src")
                         img_data = requests.get(src)
 
@@ -615,7 +335,7 @@ class DescargadorTextoApp:
                 # Seleccionar ruta y crear el PDF
                 ruta_pdf = self.seleccionar_ruta()
                 if ruta_pdf:
-                    self.crear_pdf(contenido_texto, imagenes, ruta_pdf)  # Solo la primera imagen se pasará aquí
+                    self.crear_pdf(contenido_texto, imagenes, ruta_pdf)
                     self.mostrar_mensaje(f"PDF creado: {ruta_pdf}")
                     self.label_pdf_path.configure(text=f"PDF guardado en: {ruta_pdf}")
                     self.label_pdf_path.bind("<Button-1>", lambda e: os.startfile(ruta_pdf))
@@ -670,9 +390,9 @@ class DescargadorTextoApp:
         self.root.quit()  # O usa self.root.destroy() si deseas cerrar la ventana
 
     def mostrar_info_about(self):
-        """Obtiene información de GitHub y muestra en una ventana emergente."""
+        """Obtiene información de GitHub y muestra en una ventana emergente (ejemplo)."""
         try:
-            response = requests.get("https://api.github.com/users/emy69")  # Reemplaza 'tu_usuario' con tu nombre de usuario de GitHub
+            response = requests.get("https://api.github.com/users/emy69")
             data = response.json()
 
             # Extraer información relevante
@@ -708,10 +428,10 @@ class DescargadorTextoApp:
         """Muestra la información personal del usuario en la ventana."""
         try:
             # Aquí puedes personalizar tu información
-            nombre = "Emy"  # Reemplaza con tu nombre
-            bio = "Holis."  # Reemplaza con tu biografía
-            avatar_url = "https://avatars.githubusercontent.com/u/142945265?v=4"  # Reemplaza con la URL de tu avatar
-            perfil_url = "https://github.com/emy69"  # Reemplaza con tu URL de GitHub
+            nombre = "Emy"          # Reemplaza con tu nombre
+            bio = "Holis."          # Reemplaza con tu biografía
+            avatar_url = "https://avatars.githubusercontent.com/u/142945265?v=4"
+            perfil_url = "https://github.com/emy69"
 
             # Crear un marco para la información
             frame = ctk.CTkFrame(parent_frame)
@@ -786,7 +506,6 @@ class DescargadorTextoApp:
             else:
                 pdf.set_font('Roboto', '', 12)  # Volver a la fuente normal
 
-            # Reemplazar guiones y comillas si es necesario
             texto = texto.replace("—", "-").replace("“", "\"").replace("”", "\"")
 
         self.mostrar_mensaje("PDF creado exitosamente.")
@@ -824,7 +543,17 @@ class DescargadorTextoApp:
             entry_comentario.grid(row=idx, column=2, padx=5, pady=5)
 
             # Botón para guardar cambios
-            guardar_button = ctk.CTkButton(frame, text="Guardar", command=lambda i=idx: guardar_cambios_historial(i, entry_calificacion, entry_comentario, guardar_button, cargar_historial))
+            guardar_button = ctk.CTkButton(
+                frame, 
+                text="Guardar", 
+                command=lambda i=idx: guardar_cambios_historial(
+                    i, 
+                    entry_calificacion, 
+                    entry_comentario, 
+                    guardar_button, 
+                    cargar_historial
+                )
+            )
             guardar_button.grid(row=idx, column=3, padx=5, pady=5)
 
     def procesar_url(self):
@@ -936,15 +665,15 @@ class DescargadorTextoApp:
         # Añadir contenido de texto
         for title, texto in contenido_texto:
             # Formatear el título del capítulo
-            pdf.set_font('Roboto', 'B', 20)  # Negrita y tamaño 24
-            pdf.cell(0, 10, title, ln=True, align='C')  # Centrar el título del capítulo
-            pdf.ln(10)  # Espacio después del título del capítulo
+            pdf.set_font('Roboto', 'B', 20)  # Negrita y tamaño 20
+            pdf.cell(0, 10, title, ln=True, align='C')  # Centrar
+            pdf.ln(10)
 
             # Formatear el texto del capítulo
-            pdf.set_font('Roboto', '', 12)  # Fuente normal
+            pdf.set_font('Roboto', '', 12)
             texto = texto.replace("—", "-").replace("“", "\"").replace("”", "\"")
-            pdf.multi_cell(0, 10, texto, align='J')  # Justificar el texto
-            pdf.ln(5)  # Espacio entre capítulos
+            pdf.multi_cell(0, 10, texto, align='J')
+            pdf.ln(5)
 
         pdf.output(ruta)
 
@@ -966,3 +695,4 @@ if __name__ == "__main__":
     ventana = ctk.CTk()
     app = DescargadorTextoApp(ventana)
     ventana.mainloop()
+
